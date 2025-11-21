@@ -8,6 +8,8 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
+const SHELL_BUILTINS = ["exit", "echo", "type", "pwd", "cd"];
+
 const question = (query) => {
   return new Promise((resolve) => {
     rl.question(query, resolve);
@@ -31,68 +33,102 @@ const findExecutableInPath = async (command) => {
   return null;
 };
 
+const handleExit = (args) => {
+  const exitCode = parseInt(args[0], 10);
+  if (!isNaN(exitCode)) {
+    rl.close();
+    process.exit(exitCode);
+  } else {
+    rl.close();
+    process.exit(0);
+  }
+};
+
+const handleEcho = (args) => {
+  console.log(args.join(" "));
+};
+
+const handlePwd = () => {
+  console.log(process.cwd());
+};
+
+const handleCd = (args) => {
+  const dir = args[0];
+
+  if (!dir) {
+    console.log("usage: cd <directory>");
+    return;
+  }
+
+  try {
+    const targetDir = dir === "~" ? process.env.HOME : dir;
+    process.chdir(targetDir);
+  } catch (err) {
+    console.error(`cd: ${dir}: No such file or directory`);
+  }
+};
+
+const handleType = async (args) => {
+  const targetCommand = args[0];
+
+  if (SHELL_BUILTINS.includes(targetCommand)) {
+    console.log(`${targetCommand} is a shell builtin`);
+  } else {
+    const fullPath = await findExecutableInPath(targetCommand);
+    if (fullPath) {
+      console.log(`${targetCommand} is ${fullPath}`);
+    } else {
+      console.log(`${targetCommand}: not found`);
+    }
+  }
+};
+
+const executeExternalCommand = async (command, args) => {
+  const fullPath = await findExecutableInPath(command);
+
+  if (fullPath) {
+    rl.pause();
+    await new Promise((resolve) => {
+      const child = spawn(command, args, {
+        stdio: "inherit",
+      });
+
+      child.on("exit", () => {
+        resolve();
+      });
+
+      child.on("error", (err) => {
+        console.error(`sh: ${command}: Operation failed: ${err.message}`);
+        resolve();
+      });
+    });
+    rl.resume();
+  } else {
+    console.log(`${command}: command not found`);
+  }
+};
+
+const BUILTIN_HANDLERS = {
+  exit: handleExit,
+  echo: handleEcho,
+  type: handleType,
+  pwd: handlePwd,
+  cd: handleCd,
+};
+
 const runShell = async () => {
   while (true) {
     const answer = await question("$ ");
-    const [command, ...args] = answer.trim().split(/\s+/);
-    const shellBuiltins = ["exit", "echo", "type", "pwd"];
-    if (command === "exit") {
-      const exitCode = parseInt(args[0], 10);
-      if (!isNaN(exitCode)) {
-        rl.close();
-        process.exit(exitCode);
-      } else {
-        rl.close();
-        process.exit(0);
-      }
-    } else if (command === "echo") {
-      console.log(args.join(" "));
-    } else if (command === "type") {
-      if (shellBuiltins.includes(args[0])) {
-        console.log(`${args[0]} is a shell builtin`);
-      } else {
-        const fullPath = await findExecutableInPath(args[0]);
-        if (fullPath) {
-          console.log(`${args[0]} is ${fullPath}`);
-        } else {
-          console.log(`${args[0]} not found`);
-        }
-      }
-    } else if (command === "pwd") {
-      console.log(process.cwd());
-    } else if (command === "cd") {
-      const dir = args[0];
+    const trimmedAnswer = answer.trim();
 
-      if (!dir) {
-        console.log("usage: cd <directory>");
-      } else {
-        try {
-          if (dir === "~") {
-            process.chdir(process.env.HOME);
-          } else {
-            process.chdir(dir);
-          }
-        } catch (err) {
-          console.error(`cd: ${dir}: No such file or directory`);
-        }
-      }
+    if (!trimmedAnswer) continue;
+
+    const [command, ...args] = trimmedAnswer.split(/\s+/);
+
+    if (BUILTIN_HANDLERS[command]) {
+      await BUILTIN_HANDLERS[command](args);
     } else {
-      const fullPath = await findExecutableInPath(command);
-      if (fullPath) {
-        rl.pause();
-        await new Promise((resolve) => {
-          const child = spawn(command, args, {
-            stdio: "inherit",
-          });
-
-          child.on("exit", (code) => {
-            resolve();
-          });
-        });
-        rl.resume();
-      } else {
-        console.log(`${command}: command not found`);
-      }
+      await executeExternalCommand(command, args);
     }
   }
 };
