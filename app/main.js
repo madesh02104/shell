@@ -108,6 +108,33 @@ const executeExternalCommand = async (command, args) => {
   }
 };
 
+const parseInput = (input) => {
+  const tokens = [];
+  let currentToken = "";
+  let inSingleQuotes = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+
+    if (char === "'") {
+      inSingleQuotes = !inSingleQuotes;
+    } else if (/\s/.test(char) && !inSingleQuotes) {
+      if (currentToken.length > 0) {
+        tokens.push(currentToken);
+        currentToken = "";
+      }
+    } else {
+      currentToken += char;
+    }
+  }
+
+  if (currentToken.length > 0) {
+    tokens.push(currentToken);
+  }
+
+  return tokens;
+};
+
 const BUILTIN_HANDLERS = {
   exit: handleExit,
   echo: handleEcho,
@@ -123,7 +150,9 @@ const runShell = async () => {
 
     if (!trimmedAnswer) continue;
 
-    const [command, ...args] = trimmedAnswer.split(/\s+/);
+    const tokens = parseInput(trimmedAnswer);
+    if (tokens.length === 0) continue;
+    const [command, ...args] = tokens;
 
     if (BUILTIN_HANDLERS[command]) {
       await BUILTIN_HANDLERS[command](args);
