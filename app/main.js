@@ -112,17 +112,31 @@ const parseInput = (input) => {
   const tokens = [];
   let currentToken = "";
   let inSingleQuotes = false;
+  let inDoubleQuotes = false;
 
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
     if (char === "'") {
-      inSingleQuotes = !inSingleQuotes;
-    } else if (/\s/.test(char) && !inSingleQuotes) {
+      if (!inDoubleQuotes) {
+        inSingleQuotes = !inSingleQuotes;
+        continue;
+      }
+    } else if (char === '"') {
+      if (!inSingleQuotes) {
+        inDoubleQuotes = !inDoubleQuotes;
+        continue;
+      }
+    }
+
+    const inQuotes = inSingleQuotes || inDoubleQuotes;
+
+    if (/\s/.test(char) && !inQuotes) {
       if (currentToken.length > 0) {
         tokens.push(currentToken);
         currentToken = "";
       }
+      continue;
     } else {
       currentToken += char;
     }
